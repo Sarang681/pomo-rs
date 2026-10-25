@@ -8,14 +8,16 @@ This is a learning project, built in small phases. The aim is a keyboard-driven 
 
 Work in progress. What works today:
 
-- A 25-minute countdown shown as `MM:SS`
+- A countdown shown as `MM:SS`: 25 minutes for focus, 5 for a short break, 10 for a long break
 - Start, pause and resume with one key
 - Accurate timing based on elapsed real time, so pausing and slow redraws don't cause drift
-- Phase and run state shown on screen (focus, short break, long break; idle, running, paused)
+- Automatic phase transitions: focus, short break, and a long break after every fourth focus session
+- Skip the current phase, or reset it to its full length
+- Each new phase waits for you to start it, so a break never begins while you're away
+- Phase, run state and session progress (for example `2/4 done`) shown on screen
 
 Planned, roughly in this order:
 
-- Automatic phase transitions (focus, short break, long break after four sessions), skip and reset
 - Layout with a progress bar, large digits, phase colors and key hints
 - Task label and quit confirmation
 - Help and settings screens
@@ -27,7 +29,7 @@ Planned, roughly in this order:
 You need a recent stable Rust toolchain (edition 2024). Install one with [rustup](https://rustup.rs).
 
 ```sh
-git clone <repo-url>
+git clone git@github.com:Sarang681/pomo-rs.git
 cd pomo-rs
 cargo run
 ```
@@ -37,15 +39,17 @@ cargo run
 | Key | Action |
 |---|---|
 | `space` | Start, pause or resume |
+| `s` | Skip to the next phase (a skipped focus session is not counted) |
+| `r` | Reset the current phase to its full length |
 | `q` | Quit |
 
-More keys arrive with later phases (skip, reset, task, help, settings).
+More keys arrive with later phases (task, help, settings).
 
 ## How it is built
 
 The code follows the Elm architecture:
 
-- **Model** (`src/model.rs`): all state, the `Message` enum, and a single `update` function. It has no terminal dependencies, so it is covered by plain unit tests.
+- **Model** (`src/model.rs`): all state, the `Message` enum, and a single `update` function. It has no terminal dependencies, so it is covered by plain unit tests (`src/model/tests.rs`).
 - **App** (`src/app.rs`): owns the model, runs the event loop, maps keys to messages and renders the screen.
 - **Time**: each loop iteration measures real elapsed time with `Instant` and sends it to the model as a tick. The model only counts it while running.
 

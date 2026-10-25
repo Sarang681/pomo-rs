@@ -1,7 +1,9 @@
-use std::fmt::Debug;
+use std::fmt::{Debug, Display, Formatter};
 use std::time::Duration;
 
-#[derive(Default, Debug, PartialEq)]
+pub const LONG_BREAK_LIMIT: u16 = 4;
+
+#[derive(Default, Debug, PartialEq, Copy, Clone)]
 pub enum Phase {
     #[default]
     Focus,
@@ -20,8 +22,9 @@ pub enum RunState {
 pub enum Message {
     Quit,
     ToggleTimer,
-    TogglePhase,
     Tick(Duration),
+    Skip,
+    Reset,
 }
 
 #[derive(Debug)]
@@ -30,15 +33,18 @@ pub struct Model {
     pub phase: Phase,
     pub run_state: RunState,
     pub remaining: Duration,
+    pub sessions_completed: u16,
 }
 
 impl Default for Model {
     fn default() -> Self {
+        let phase = Phase::Focus;
         Self {
             exit: false,
-            phase: Phase::Focus,
+            phase,
             run_state: RunState::Idle,
-            remaining: Duration::from_mins(25),
+            remaining: phase.map_phase_to_default_timer(),
+            sessions_completed: 0,
         }
     }
 }
@@ -47,27 +53,56 @@ impl Model {
     pub fn update(&mut self, message: Message) {
         match message {
             Message::Quit => self.exit = true,
-            Message::TogglePhase => match self.phase {
-                Phase::Focus => self.phase = Phase::ShortBreak,
-                Phase::ShortBreak => self.phase = Phase::LongBreak,
-                Phase::LongBreak => self.phase = Phase::Focus,
-            },
             Message::ToggleTimer => match self.run_state {
                 RunState::Idle => self.run_state = RunState::Running,
                 RunState::Running => self.run_state = RunState::Paused,
                 RunState::Paused => self.run_state = RunState::Running,
             },
-            Message::Tick(elapsed_time) => {
-                if self.run_state == RunState::Running {
-                    if self.remaining > elapsed_time {
-                        self.remaining -= elapsed_time;
-                    } else {
-                        self.remaining = Duration::ZERO;
-                        self.run_state = RunState::Idle;
-                    }
-                }
+            Message::Tick(elapsed_time) => self.handle_tick(elapsed_time),
+            Message::Skip => {
+                self.handle_phase_change(true);
+                self.run_state = RunState::Idle;
+            }
+            Message::Reset => {
+                self.remaining = self.phase.map_phase_to_default_timer();
+                self.run_state = RunState::Idle;
             }
         }
+    }
+
+    fn handle_tick(&mut self, elapsed_time: Duration) {
+        if self.run_state == RunState::Running {
+            if self.remaining > elapsed_time {
+                self.remaining -= elapsed_time;
+            } else {
+                self.remaining = Duration::ZERO;
+                self.run_state = RunState::Idle;
+                self.handle_phase_change(false);
+            }
+        }
+    }
+
+    fn handle_phase_change(&mut self, is_skipped: bool) {
+        let new_phase;
+        match self.phase {
+            Phase::Focus => {
+                if !is_skipped {
+                    self.sessions_completed += 1;
+                }
+                if self.sessions_completed == LONG_BREAK_LIMIT {
+                    new_phase = Phase::LongBreak;
+                } else {
+                    new_phase = Phase::ShortBreak;
+                }
+            }
+            Phase::ShortBreak => new_phase = Phase::Focus,
+            Phase::LongBreak => {
+                new_phase = Phase::Focus;
+                self.sessions_completed = 0;
+            }
+        }
+        self.phase = new_phase;
+        self.remaining = new_phase.map_phase_to_default_timer();
     }
 
     pub fn format_time_remaining(&self) -> String {
@@ -78,129 +113,35 @@ impl Model {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use crate::model::{Message, Model, Phase, RunState};
-    use std::time::Duration;
-
-    #[test]
-    fn test_model_defaults() {
-        let test_model = Model::default();
-        assert_eq!(test_model.run_state, RunState::Idle);
-        assert_eq!(test_model.phase, Phase::Focus);
-        assert_eq!(test_model.remaining, Duration::from_mins(25));
-    }
-
-    #[test]
-    fn test_toggle_idle_start_timer() {
-        let mut test_model = Model::default();
-        test_model.update(Message::ToggleTimer);
-
-        assert_eq!(test_model.run_state, RunState::Running);
-    }
-
-    #[test]
-    fn test_toggle_running_pause() {
-        let mut test_model = Model::default();
-        test_model.update(Message::ToggleTimer);
-        test_model.update(Message::ToggleTimer);
-
-        assert_eq!(test_model.run_state, RunState::Paused);
-    }
-
-    #[test]
-    fn test_toggle_pause_running() {
-        let mut test_model = Model::default();
-        test_model.update(Message::ToggleTimer);
-        test_model.update(Message::ToggleTimer);
-        test_model.update(Message::ToggleTimer);
-
-        assert_eq!(test_model.run_state, RunState::Running);
-    }
-
-    #[test]
-    fn test_quit_set_exit() {
-        let mut test_model = Model::default();
-        test_model.update(Message::Quit);
-
-        assert!(test_model.exit);
-        assert_eq!(test_model.run_state, RunState::Idle);
-        assert_eq!(test_model.phase, Phase::Focus);
-    }
-
-    #[test]
-    fn test_format_remaining_for_default() {
-        let test_model = Model::default();
-
-        let formatted_string = test_model.format_time_remaining();
-        assert_eq!("25:00", formatted_string);
-    }
-
-    #[test]
-    fn test_format_remaining_for_partial_seconds() {
-        let mut test_model = Model::default();
-
-        test_model.update(Message::ToggleTimer);
-        test_model.update(Message::Tick(Duration::from_millis(500)));
-
-        let formatted_string = test_model.format_time_remaining();
-        assert_eq!("25:00", formatted_string);
-    }
-
-    #[test]
-    fn test_remaining_default() {
-        let test_model = Model::default();
-
-        assert_eq!(Duration::from_mins(25), test_model.remaining);
-    }
-
-    #[test]
-    fn test_remaining_when_state_idle() {
-        let mut test_model = Model::default();
-
-        test_model.update(Message::Tick(Duration::from_mins(10)));
-
-        assert_eq!(Duration::from_mins(25), test_model.remaining);
-    }
-
-    #[test]
-    fn test_remaining_when_state_running() {
-        let mut test_model = Model::default();
-
-        test_model.update(Message::ToggleTimer);
-        test_model.update(Message::Tick(Duration::from_mins(10)));
-
-        assert_eq!(Duration::from_mins(15), test_model.remaining);
-    }
-
-    #[test]
-    fn test_remaining_when_state_paused() {
-        let mut test_model = Model::default();
-
-        test_model.update(Message::ToggleTimer);
-        test_model.update(Message::ToggleTimer);
-        test_model.update(Message::Tick(Duration::from_mins(10)));
-
-        assert_eq!(Duration::from_mins(25), test_model.remaining);
-    }
-
-    #[test]
-    fn test_remaining_when_tick_larger_than_remaining() {
-        let mut test_model = Model::default();
-
-        test_model.update(Message::ToggleTimer);
-        test_model.update(Message::Tick(Duration::from_mins(30)));
-
-        assert_eq!(Duration::ZERO, test_model.remaining);
-    }
-
-    #[test]
-    fn test_remaining_when_tick_equals_remaining() {
-        let mut test_model = Model::default();
-
-        test_model.update(Message::ToggleTimer);
-        test_model.update(Message::Tick(Duration::from_mins(25)));
-
-        assert_eq!(Duration::ZERO, test_model.remaining);
+impl Phase {
+    fn map_phase_to_default_timer(&self) -> Duration {
+        match self {
+            Phase::Focus => Duration::from_mins(25),
+            Phase::ShortBreak => Duration::from_mins(5),
+            Phase::LongBreak => Duration::from_mins(10),
+        }
     }
 }
+
+impl Display for Phase {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Phase::Focus => write!(f, "FOCUS"),
+            Phase::ShortBreak => write!(f, "SHORT BREAK"),
+            Phase::LongBreak => write!(f, "LONG BREAK"),
+        }
+    }
+}
+
+impl Display for RunState {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RunState::Idle => write!(f, "Ready"),
+            RunState::Running => write!(f, "Running"),
+            RunState::Paused => write!(f, "PAUSED"),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests;

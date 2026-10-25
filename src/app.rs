@@ -1,5 +1,5 @@
 use crate::model::Message::Tick;
-use crate::model::{Message, Model};
+use crate::model::{LONG_BREAK_LIMIT, Message, Model};
 use color_eyre::eyre::Context;
 use crossterm::event;
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind};
@@ -69,7 +69,8 @@ impl App {
         let message = match key_event.code {
             KeyCode::Char('q') => Some(Message::Quit),
             KeyCode::Char(' ') => Some(Message::ToggleTimer),
-            KeyCode::Tab => Some(Message::TogglePhase),
+            KeyCode::Char('r') => Some(Message::Reset),
+            KeyCode::Char('s') => Some(Message::Skip),
             _ => None,
         };
         Ok(message)
@@ -88,12 +89,15 @@ impl Widget for &App {
         let current_phase = &self.model.phase;
         let current_state = &self.model.run_state;
         let current_remaining = self.model.format_time_remaining();
-        let phase = Line::from(format!("{current_phase:?}")).centered();
-        let state = Line::from(format!("{current_state:?}")).centered();
-        let remaining = Line::from(format!("Time Remaining :: {current_remaining} "))
+        let current_sessions = self.model.sessions_completed;
+        let phase = Line::from(format!("{current_phase}")).centered();
+        let state = Line::from(format!("{current_state}")).centered();
+        let remaining = Line::from(format!("{current_remaining} "))
             .centered()
             .bold();
-        let final_text = Text::from(vec![phase, state, remaining]);
+        let sessions =
+            Line::from(format!("{}/{} done", current_sessions, LONG_BREAK_LIMIT)).centered();
+        let final_text = Text::from(vec![phase, state, remaining, sessions]);
         let block = Block::bordered()
             .title(title.left_aligned())
             .border_set(border::THICK);
