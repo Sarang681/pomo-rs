@@ -14,11 +14,12 @@ Work in progress. What works today:
 - Automatic phase transitions: focus, short break, and a long break after every fourth focus session
 - Skip the current phase, or reset it to its full length
 - Each new phase waits for you to start it, so a break never begins while you're away
-- Phase, run state and session progress (for example `2/4 done`) shown on screen
+- A laid-out screen with the phase and session counter, cycle dots, the time, a progress bar, the run state, and key hints in a footer that change with the timer state
 
 Planned, roughly in this order:
 
-- Layout with a progress bar, large digits, phase colors and key hints
+- Phase colors and clearer paused and ready states
+- Large digits for the timer and a layout that adapts to small terminals
 - Task label and quit confirmation
 - Help and settings screens
 - Daily stats and saved history
@@ -50,7 +51,8 @@ More keys arrive with later phases (task, help, settings).
 The code follows the Elm architecture:
 
 - **Model** (`src/model.rs`): all state, the `Message` enum, and a single `update` function. It has no terminal dependencies, so it is covered by plain unit tests (`src/model/tests.rs`).
-- **App** (`src/app.rs`): owns the model, runs the event loop, maps keys to messages and renders the screen.
+- **App** (`src/app.rs`): owns the model, runs the event loop and maps keys to messages.
+- **UI** (`src/ui.rs`): draws the screen from the model, one small function per region. It only reads the model, and it is tested by rendering into an in-memory buffer.
 - **Time**: each loop iteration measures real elapsed time with `Instant` and sends it to the model as a tick. The model only counts it while running.
 
 ## Development

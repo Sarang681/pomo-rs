@@ -1,15 +1,12 @@
 use crate::model::Message::Tick;
-use crate::model::{LONG_BREAK_LIMIT, Message, Model};
+use crate::model::{Message, Model};
+use crate::ui;
 use color_eyre::eyre::Context;
 use crossterm::event;
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::prelude::Widget;
-use ratatui::style::{Color, Style, Stylize};
-use ratatui::symbols::border;
-use ratatui::text::{Line, Text};
-use ratatui::widgets::{Block, Paragraph};
 use ratatui::{DefaultTerminal, Frame};
 use std::time::{Duration, Instant};
 
@@ -82,26 +79,6 @@ impl Widget for &App {
     where
         Self: Sized,
     {
-        let title = Line::from("pomo-rs")
-            .style(Style::default())
-            .fg(Color::Rgb(238, 129, 106))
-            .bold();
-        let current_phase = &self.model.phase;
-        let current_state = &self.model.run_state;
-        let current_remaining = self.model.format_time_remaining();
-        let current_sessions = self.model.sessions_completed;
-        let phase = Line::from(format!("{current_phase}")).centered();
-        let state = Line::from(format!("{current_state}")).centered();
-        let remaining = Line::from(format!("{current_remaining} "))
-            .centered()
-            .bold();
-        let sessions =
-            Line::from(format!("{}/{} done", current_sessions, LONG_BREAK_LIMIT)).centered();
-        let final_text = Text::from(vec![phase, state, remaining, sessions]);
-        let block = Block::bordered()
-            .title(title.left_aligned())
-            .border_set(border::THICK);
-
-        Paragraph::new(final_text).block(block).render(area, buf);
+        ui::render(&self.model, area, buf);
     }
 }

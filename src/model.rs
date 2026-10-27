@@ -105,6 +105,15 @@ impl Model {
         self.remaining = new_phase.map_phase_to_default_timer();
     }
 
+    /// Fraction of the current phase that has elapsed, always within 0.0..=1.0.
+    pub fn progress(&self) -> f64 {
+        let total = self.phase.map_phase_to_default_timer().as_secs_f64();
+        if total == 0.0 {
+            return 0.0;
+        }
+        (1.0 - self.remaining.as_secs_f64() / total).clamp(0.0, 1.0)
+    }
+
     pub fn format_time_remaining(&self) -> String {
         let total_seconds = self.remaining.as_secs_f64().ceil() as u64;
         let minutes = total_seconds / 60;

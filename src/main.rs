@@ -2,6 +2,7 @@ use crate::app::App;
 
 mod app;
 mod model;
+mod ui;
 
 fn main() -> color_eyre::Result<()> {
     color_eyre::install()?;

@@ -383,3 +383,52 @@ fn test_full_cycle_runs_focus_and_breaks_in_order() {
     assert_eq!(test_model.sessions_completed, 0);
     assert_eq!(test_model.run_state, RunState::Idle);
 }
+
+// ---- progress ----
+
+#[test]
+fn test_progress_is_zero_for_a_fresh_phase() {
+    let test_model = Model::default();
+
+    assert_eq!(test_model.progress(), 0.0);
+}
+
+#[test]
+fn test_progress_is_half_when_half_the_phase_has_elapsed() {
+    let mut test_model = model_with(Phase::Focus, RunState::Running, 0);
+
+    test_model.update(Message::Tick(Phase::Focus.map_phase_to_default_timer() / 2));
+
+    assert!((test_model.progress() - 0.5).abs() < 1e-9);
+}
+
+#[test]
+fn test_progress_uses_the_length_of_the_current_phase() {
+    let mut test_model = model_with(Phase::ShortBreak, RunState::Running, 1);
+
+    test_model.update(Message::Tick(
+        Phase::ShortBreak.map_phase_to_default_timer() / 2,
+    ));
+
+    assert!((test_model.progress() - 0.5).abs() < 1e-9);
+}
+
+#[test]
+fn test_progress_is_one_when_nothing_remains() {
+    let test_model = Model {
+        remaining: Duration::ZERO,
+        ..Model::default()
+    };
+
+    assert_eq!(test_model.progress(), 1.0);
+}
+
+#[test]
+fn test_progress_stays_in_range_when_remaining_exceeds_the_phase_length() {
+    let test_model = Model {
+        remaining: Duration::from_hours(2),
+        ..Model::default()
+    };
+
+    assert_eq!(test_model.progress(), 0.0);
+}
