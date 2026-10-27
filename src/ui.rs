@@ -1,3 +1,4 @@
+use crate::digits::{DIGIT_HEIGHT, big_digits, big_digits_width};
 use crate::model::{LONG_BREAK_LIMIT, Model, Phase, RunState};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Constraint::{Fill, Length};
@@ -9,6 +10,8 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Paragraph};
 
 const PROGRESS_BAR_WIDTH: u16 = 40;
+/// Space the progress bar leaves for the percentage: two spaces, three digits and `%`.
+const PERCENTAGE_WIDTH: u16 = 6;
 
 pub fn render(model: &Model, area: Rect, buf: &mut Buffer) {
     let phase_color = map_phase_to_color(&model.phase);
@@ -71,23 +74,41 @@ fn render_session_info(model: &Model, area: Rect, buf: &mut Buffer, phase_color:
 }
 
 fn render_timer(model: &Model, area: Rect, buf: &mut Buffer, phase_color: &Color) {
-    let [_, time_area, _] = area.layout(&Layout::vertical([Fill(1), Length(1), Fill(1)]));
-
+    let time = model.format_time_remaining();
     let fg_color = if model.run_state == RunState::Paused {
         Color::Gray
     } else {
         *phase_color
     };
 
-    Paragraph::new(Line::from(model.format_time_remaining()).bold())
-        .centered()
-        .fg(fg_color)
-        .render(time_area, buf);
+    let digits_fit = usize::from(area.height) >= DIGIT_HEIGHT
+        && usize::from(area.width) >= big_digits_width(&time);
+
+    if digits_fit {
+        let [_, digits_area, _] = area.layout(&Layout::vertical([
+            Fill(1),
+            Length(DIGIT_HEIGHT as u16),
+            Fill(1),
+        ]));
+        let rows: Vec<Line> = big_digits(&time).into_iter().map(Line::from).collect();
+
+        Paragraph::new(rows)
+            .centered()
+            .fg(fg_color)
+            .render(digits_area, buf);
+    } else {
+        let [_, time_area, _] = area.layout(&Layout::vertical([Fill(1), Length(1), Fill(1)]));
+
+        Paragraph::new(Line::from(time).bold())
+            .centered()
+            .fg(fg_color)
+            .render(time_area, buf);
+    }
 }
 
 fn render_progress(model: &Model, area: Rect, buf: &mut Buffer, phase_color: &Color) {
     let ratio = model.progress();
-    let width = usize::from(PROGRESS_BAR_WIDTH);
+    let width = usize::from(PROGRESS_BAR_WIDTH.min(area.width.saturating_sub(PERCENTAGE_WIDTH)));
     let filled = (ratio * width as f64).round() as usize;
     let filled_color = if model.run_state == RunState::Running {
         *phase_color
@@ -190,6 +211,12 @@ mod tests {
         panic!("{needle:?} was not rendered");
     }
 
+    /// Tallest terminal height that is still too short for big digits: the timer region gets
+    /// 4 rows (14 minus 2 border rows, 1 footer row and 7 fixed rows), and the digits need 5.
+    const SHORT_HEIGHT: u16 = 14;
+    /// Shortest terminal height that has room for big digits.
+    const TALL_HEIGHT: u16 = SHORT_HEIGHT + 1;
+
     fn model_with_state(run_state: RunState) -> Model {
         let fresh = Model::default();
         Model {
@@ -201,7 +228,7 @@ mod tests {
 
     #[test]
     fn test_render_shows_every_region() {
-        let text = render_to_string(&Model::default(), 60, 20);
+        let text = render_to_string(&Model::default(), 60, SHORT_HEIGHT);
 
         assert!(text.contains("pomo-rs"));
         assert!(text.contains("FOCUS  ·  Session 1/4"));
@@ -244,6 +271,102 @@ mod tests {
         for (width, height) in [(0, 0), (1, 1), (5, 3), (20, 6), (40, 8), (200, 60)] {
             render_to_string(&Model::default(), width, height);
         }
+    }
+
+    // ---- big digits and small terminals ----
+
+    #[test]
+    fn test_big_digits_are_drawn_when_there_is_room() {
+        let model = Model::default();
+        let time = model.format_time_remaining();
+
+        let text = render_to_string(&model, 60, 20);
+
+        for row in big_digits(&time) {
+            assert!(text.contains(&row), "missing row {row:?}");
+        }
+        assert!(!text.contains(&time));
+    }
+
+    #[test]
+    fn test_big_digits_appear_at_the_smallest_height_that_fits() {
+        let model = Model::default();
+        let time = model.format_time_remaining();
+
+        let text = render_to_string(&model, 60, TALL_HEIGHT);
+
+        assert!(text.contains(&big_digits(&time)[0]));
+        assert!(!text.contains(&time));
+    }
+
+    #[test]
+    fn test_plain_time_is_drawn_when_the_terminal_is_too_short() {
+        let model = Model::default();
+        let time = model.format_time_remaining();
+
+        let text = render_to_string(&model, 60, SHORT_HEIGHT);
+
+        assert!(text.contains(&time));
+        assert!(!text.contains(&big_digits(&time)[0]));
+    }
+
+    #[test]
+    fn test_plain_time_is_drawn_when_the_terminal_is_too_narrow() {
+        let model = Model::default();
+        let time = model.format_time_remaining();
+
+        let text = render_to_string(&model, 18, 20);
+
+        assert!(text.contains(&time));
+    }
+
+    #[test]
+    fn test_big_digits_follow_the_phase_color_and_gray_when_paused() {
+        let running = render_to_buffer(&model_with_state(RunState::Running), 60, 20);
+        let paused = render_to_buffer(&model_with_state(RunState::Paused), 60, 20);
+
+        assert_eq!(fg_of(&running, "█"), map_phase_to_color(&Phase::Focus));
+        assert_eq!(fg_of(&paused, "█"), Color::Gray);
+    }
+
+    #[test]
+    fn test_big_digits_use_the_color_of_the_current_phase() {
+        for phase in [Phase::Focus, Phase::ShortBreak, Phase::LongBreak] {
+            let model = Model {
+                phase,
+                run_state: RunState::Running,
+                ..Model::default()
+            };
+
+            let buf = render_to_buffer(&model, 60, 20);
+
+            assert_eq!(fg_of(&buf, "█"), map_phase_to_color(&phase));
+        }
+    }
+
+    #[test]
+    fn test_progress_bar_is_full_width_in_a_wide_terminal() {
+        let text = render_to_string(&Model::default(), 60, 20);
+
+        assert_eq!(text.matches('░').count(), 40);
+    }
+
+    #[test]
+    fn test_progress_bar_shrinks_to_keep_the_percentage_visible() {
+        // 30 columns minus 2 border columns leaves 28; the percentage needs 6.
+        let text = render_to_string(&Model::default(), 30, 20);
+
+        assert_eq!(text.matches('░').count(), 22);
+        assert!(text.contains("  0%"));
+    }
+
+    #[test]
+    fn test_progress_bar_keeps_the_percentage_in_a_very_narrow_terminal() {
+        // 10 columns minus 2 border columns leaves 8: a 2 column bar plus the 6 column percentage.
+        let text = render_to_string(&Model::default(), 10, 20);
+
+        assert_eq!(text.matches('░').count(), 2);
+        assert!(text.contains("  0%"));
     }
 
     // ---- colors ----
@@ -300,7 +423,7 @@ mod tests {
             let model = model_with_state(run_state);
             let time = model.format_time_remaining();
 
-            let buf = render_to_buffer(&model, 60, 20);
+            let buf = render_to_buffer(&model, 60, SHORT_HEIGHT);
 
             assert_eq!(fg_of(&buf, &time), color);
         }
@@ -320,7 +443,7 @@ mod tests {
         for run_state in [RunState::Idle, RunState::Paused] {
             let model = model_with_state(run_state);
 
-            let buf = render_to_buffer(&model, 60, 20);
+            let buf = render_to_buffer(&model, 60, SHORT_HEIGHT);
 
             assert_eq!(fg_of(&buf, "█"), Color::Gray);
         }
