@@ -15,10 +15,12 @@ Work in progress. What works today:
 - Skip the current phase, or reset it to its full length
 - Each new phase waits for you to start it, so a break never begins while you're away
 - A laid-out screen with the phase and session counter, cycle dots, the time, a progress bar, the run state, and key hints in a footer that change with the timer state
+- Phase colors: coral for focus, green for a short break, blue for a long break
+- Clear states: the time and bar go gray when paused, and the state line turns yellow and explains how to resume
 
 Planned, roughly in this order:
 
-- Phase colors and clearer paused and ready states
+- Colored session dots and footer keys
 - Large digits for the timer and a layout that adapts to small terminals
 - Task label and quit confirmation
 - Help and settings screens
@@ -52,7 +54,7 @@ The code follows the Elm architecture:
 
 - **Model** (`src/model.rs`): all state, the `Message` enum, and a single `update` function. It has no terminal dependencies, so it is covered by plain unit tests (`src/model/tests.rs`).
 - **App** (`src/app.rs`): owns the model, runs the event loop and maps keys to messages.
-- **UI** (`src/ui.rs`): draws the screen from the model, one small function per region. It only reads the model, and it is tested by rendering into an in-memory buffer.
+- **UI** (`src/ui.rs`): draws the screen from the model, one small function per region. It only reads the model, and it is tested by rendering into an in-memory buffer, including the color of individual cells.
 - **Time**: each loop iteration measures real elapsed time with `Instant` and sends it to the model as a tick. The model only counts it while running.
 
 ## Development

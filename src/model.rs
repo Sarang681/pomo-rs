@@ -125,9 +125,18 @@ impl Model {
 impl Phase {
     fn map_phase_to_default_timer(&self) -> Duration {
         match self {
-            Phase::Focus => Duration::from_mins(25),
-            Phase::ShortBreak => Duration::from_mins(5),
-            Phase::LongBreak => Duration::from_mins(10),
+            Phase::Focus => {
+                Duration::from_mins(25)
+                // Duration::from_mins(1)
+            }
+            Phase::ShortBreak => {
+                Duration::from_mins(5)
+                // Duration::from_secs(10)
+            }
+            Phase::LongBreak => {
+                Duration::from_mins(10)
+                // Duration::from_secs(30)
+            }
         }
     }
 }
